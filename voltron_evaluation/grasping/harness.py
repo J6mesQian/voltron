@@ -30,7 +30,7 @@ logging.config.dictConfig(LOG_CONFIG)
 overwatch = logging.getLogger(__file__)
 
 
-class GraspAffordanceHarness:
+class GraspAffordanceHarness:                                                                                                                                                       
     def __init__(
         self,
         model_id: str,
@@ -40,9 +40,9 @@ class GraspAffordanceHarness:
         segmenter_init_fn: Callable[[nn.Module, nn.Module], LightningModule] = instantiate_segmenter,
         run_dir: Path = Path("runs/evaluation/grasping"),
         data: Path = Path("data/grasping"),
-        n_val: int = 170,
+        n_val: int = 128,
         n_folds: int = 5,
-        bsz: int = 64,
+        bsz: int = 128,
         epochs: int = 50,
         seed: int = 7,
     ) -> None:
@@ -73,7 +73,9 @@ class GraspAffordanceHarness:
             # Run out the folds...
             overwatch.info(f"Starting Data Processing for Fold {fold + 1} / {self.n_folds}")
             dm = self.get_datamodule(fold)
-
+            
+            #import ipdb; ipdb.set_trace()
+            
             overwatch.info("Instantiating Adapter Model and Callbacks")
             segmenter = self.segmenter_init_fn(self.backbone, self.extractor_init_fn())
             checkpoint_callback = ModelCheckpoint(
@@ -93,6 +95,8 @@ class GraspAffordanceHarness:
                 logger=None,
                 callbacks=[checkpoint_callback],
             )
+            
+            
             trainer.fit(segmenter, datamodule=dm)
 
             # Get fold metrics & serialize...

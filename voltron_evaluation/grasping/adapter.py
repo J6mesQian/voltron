@@ -16,6 +16,7 @@ from einops import rearrange
 from lightning import LightningModule
 from torch.optim import AdamW, Optimizer
 from torchvision.transforms.functional import gaussian_blur
+from transformers import FlavaProcessor, FlavaForPreTraining, FlavaConfig
 
 # Book-Keeping
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -84,20 +85,49 @@ class SegmenterPuP(LightningModule):
 
     def forward(self, img: torch.Tensor) -> torch.Tensor:
         # Run through Backbone --> [bsz, n_patches, embed_dim]
-        with torch.no_grad():
-            patches = self.backbone(img, language=["picking something up"])
+        #modify by Yuxi Qian
+        processed_list = []
+        processor = FlavaProcessor.from_pretrained('facebook/flava-full')
+        
+        batch_size = img.shape[0]
+        processed_list = []
 
+        for i in range(batch_size):
+            processed = processor(
+                images=img[i].squeeze(0).to("cuda"),
+                text = "picking something up", 
+                padding="max_length", 
+                return_tensors="pt",
+                max_length=512,
+                truncation=True,
+                return_codebook_pixels=True,
+                return_image_mask=True,
+            )
+            processed_list.append(processed)
+
+        # Combine the processed outputs into one batch
+        final_batch = {}
+        for key in processed_list[0].keys():
+            final_batch[key] = torch.cat([p[key] for p in processed_list], dim=0).to("cuda")
+        
+        with torch.no_grad():
+            output = self.backbone(**final_batch)
+
+        patches = output['multimodal_masked_embeddings']
+        
         # Extract Features --> reshape to Grid for PuPDecoder
         extracted = self.extractor(patches)
+        #import ipdb; ipdb.set_trace()
         grid = rearrange(extracted, "bsz (h w) d -> bsz d h w", h=self.grid_size, w=self.grid_size)
-
+        
+        
         # Get Segmentation logits
         return self.pup_decoder(grid)
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> torch.Tensor:
         """Unpack batch of (image frame, per-pixel labels) --> run through model, and compute spatial cross-entropy."""
         img, labels = batch
-
+        #import ipdb; ipdb.set_trace()
         # Run forward pass --> [bsz, 3, 80, 80]
         logits = self.forward(img)
 
@@ -108,7 +138,7 @@ class SegmenterPuP(LightningModule):
     def validation_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
         """Unpack batch of RGB frame, per-pixel labels, run through model, compute various ARC metrics."""
         img, labels = batch
-
+        #import ipdb; ipdb.set_trace()
         # Run forward pass --> [bsz, 3, 80, 80]
         logits = self.forward(img)
 
@@ -138,6 +168,8 @@ class SegmenterPuP(LightningModule):
         p95th_threshold = torch.quantile(predicted_probs, q=0.95, dim=1)
         p90th_threshold = torch.quantile(predicted_probs, q=0.90, dim=1)
 
+        
+        
         # Compute PR @ X
         metrics = {"val_loss": loss}
         for m, t in [
@@ -152,6 +184,7 @@ class SegmenterPuP(LightningModule):
             # Write Precision --> use 1e-8 as eps...
             metrics[m] = true_pos.sum() / (true_pos.sum() + false_pos.sum() + 1e-8)
 
+        #import ipdb; ipdb.set_trace()
         # Log...
         self.log_dict(metrics, prog_bar=True)
 
@@ -186,7 +219,7 @@ class SegmenterPuP(LightningModule):
         p99th_threshold = torch.quantile(predicted_probs, q=0.99, dim=1)
         p95th_threshold = torch.quantile(predicted_probs, q=0.95, dim=1)
         p90th_threshold = torch.quantile(predicted_probs, q=0.90, dim=1)
-
+        
         # Compute PR @ X
         metrics = {"test_loss": loss}
         for m, t in [
@@ -200,7 +233,7 @@ class SegmenterPuP(LightningModule):
 
             # Write Precision --> use 1e-8 as eps...
             metrics[m] = true_pos.sum() / (true_pos.sum() + false_pos.sum() + 1e-8)
-
+        import ipdb; ipdb.set_trace()
         # Log...
         self.log_dict(metrics)
 

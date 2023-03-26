@@ -46,8 +46,9 @@ class DetectorMLP(LightningModule):
     def training_step(self, batch: Tuple[torch.Tensor, str, torch.Tensor, torch.Tensor], batch_idx: int) -> torch.Tensor:
         """Unpack batch of RGB frame, language string, bbox (xywh), clutter split, run detector, compute loss."""
         img, lang, bbox, _ = batch
-
+        
         # Run forward pass, get predicted bbox coordinates =>> [bsz, 4]
+        import ipdb; ipdb.set_trace()
         bbox_coords = self.forward(img, lang)
 
         # Compute huber loss (smooth L1) relative to ground-truth bbox coordinates

@@ -166,10 +166,10 @@ class GraspingRGBDataModule(LightningDataModule):
         return DataLoader(self.train_dataset, batch_size=self.bsz, num_workers=8, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(self.val_dataset, batch_size=512, num_workers=8, shuffle=False)
+        return DataLoader(self.val_dataset, batch_size=128, num_workers=8, shuffle=False)
 
     def test_dataloader(self) -> DataLoader:
-        return DataLoader(self.test_dataset, batch_size=512, num_workers=8, shuffle=False)
+        return DataLoader(self.test_dataset, batch_size=128, num_workers=8, shuffle=False)
 
 
 def build_datamodule(
