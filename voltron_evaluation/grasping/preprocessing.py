@@ -14,6 +14,8 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision.io import read_image
 from torchvision.transforms import InterpolationMode
 from tqdm import tqdm
+from transformers import FlavaProcessor, FlavaForPreTraining, FlavaConfig
+
 
 # Grab Logger
 overwatch = logging.getLogger(__file__)
@@ -33,6 +35,8 @@ class GraspingRGBDataset(Dataset):
         self.data_dir, self.examples, self.label_scale_factor = data_dir, examples, label_scale_factor
         self.pad_resolution, self.input_resolution = pad_resolution, input_resolution
         self.transforms = transforms
+
+        # self.examples = self.examples[:10]
 
         # Iterate through `self.examples` and retrieve input RGB & labels
         self.input_rgbs, self.labels = [], []
@@ -83,11 +87,26 @@ class GraspingRGBDataset(Dataset):
             assert rgb.size() == torch.Size([3, 224, 224]) and rgb.dtype == torch.uint8
 
             # Add to Trackers --> Note that we apply `transforms` *in the Dataset initializer*
-            self.input_rgbs.append(self.transforms(rgb))
+            if type(self.transforms) == FlavaProcessor:              
+                # this is going to be a dictionary format   
+                self.input_rgbs.append(self.transforms(
+                    rgb, 
+                    text=["picking something up"], 
+                    padding="max_length", 
+                    return_tensors="pt", 
+                    truncation=True,
+                    return_codebook_pixels=True,
+                    return_image_mask=True
+                ))
+            else:
+                self.input_rgbs.append(self.transforms(rgb))
             self.labels.append(lbl.long())
 
         # Tensorize...
-        self.input_rgbs, self.labels = torch.stack(self.input_rgbs), torch.stack(self.labels)
+        if type(self.transforms) == FlavaProcessor:  
+            self.labels = torch.stack(self.labels)
+        else:
+            self.input_rgbs, self.labels = torch.stack(self.input_rgbs), torch.stack(self.labels)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.input_rgbs[idx], self.labels[idx]

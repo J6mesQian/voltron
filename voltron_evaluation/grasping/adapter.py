@@ -16,6 +16,7 @@ from einops import rearrange
 from lightning import LightningModule
 from torch.optim import AdamW, Optimizer
 from torchvision.transforms.functional import gaussian_blur
+from transformers import FlavaProcessor, FlavaForPreTraining, FlavaConfig
 
 # Book-Keeping
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -208,5 +209,41 @@ class SegmenterPuP(LightningModule):
         return AdamW([p for p in self.parameters() if p.requires_grad])
 
 
+class SegmenterPuPFlava(SegmenterPuP):
+    def __init__(
+        self,
+        backbone: nn.Module,
+        extractor: nn.Module,
+        input_resolution: int = 224,
+        output_resolution: int = 80,
+        n_classes: int = 3,
+        pup_stages: int = 4,
+        pup_features: Tuple[int, ...] = (128, 64, 32, 16),
+        unlabeled_index: int = 2,
+    ) -> None:
+        super().__init__(backbone, extractor, input_resolution, output_resolution, n_classes, pup_stages, pup_features, unlabeled_index)
+
+    def forward(self, batch: dict) -> torch.Tensor:
+        # Run through Backbone --> [bsz, n_patches, embed_dim]
+
+        # remove extra dimension
+        for k, v in batch.items():
+            batch[k] = batch[k].squeeze()
+
+        with torch.no_grad():
+            output = self.backbone(**batch)
+
+        patches = output['multimodal_masked_embeddings']
+        
+        # Extract Features --> reshape to Grid for PuPDecoder
+        extracted = self.extractor(patches)
+        grid = rearrange(extracted, "bsz (h w) d -> bsz d h w", h=self.grid_size, w=self.grid_size)
+        
+        # Get Segmentation logits
+        return self.pup_decoder(grid)
+
 def instantiate_segmenter(backbone: nn.Module, extractor: nn.Module) -> LightningModule:
     return SegmenterPuP(backbone, extractor)
+
+def instantiate_segmenter_flava(backbone: nn.Module, extractor: nn.Module) -> LightningModule:
+    return SegmenterPuPFlava(backbone, extractor)

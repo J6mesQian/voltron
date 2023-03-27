@@ -158,6 +158,41 @@ class DetectorMLP(LightningModule):
     def configure_optimizers(self) -> Optimizer:
         return AdamW([p for p in self.parameters() if p.requires_grad])
 
+class DetectorMLPFlava(DetectorMLP):
+    def __init__(
+        self, backbone: nn.Module, extractor: nn.Module, mlp_features: Tuple[int, ...] = (512, 256, 128, 64)
+    ) -> None:
+        super().__init__(backbone, extractor, mlp_features)
+        self.mlp_features = [extractor.embed_dim, *list(mlp_features)]
+
+        # Create Network --> Extractor into a "single-shot" detection MLP
+        self.backbone, self.extractor, _layers = backbone, extractor, []
+        for in_feats, out_feats in zip(self.mlp_features[:-1], self.mlp_features[1:]):
+            _layers.append(nn.Linear(in_feats, out_feats))
+            _layers.append(nn.GELU())
+
+        # Add final projection =>> xywh bbox coordinates
+        _layers.append(nn.Linear(self.mlp_features[-1], 4))
+        self.mlp = nn.Sequential(*_layers)
+
+    def forward(self, batch: dict, lang: Tuple[str]) -> torch.Tensor:
+        # Run through Backbone --> [bsz, n_patches, embed_dim]
+        # remove extra dimension
+        for k, v in batch.items():
+            batch[k] = batch[k].squeeze()
+
+        with torch.no_grad():
+            output = self.backbone(**batch)
+
+        patches = output['multimodal_masked_embeddings']
+        
+        # Extract Features --> Detector MLP
+        extracted = self.extractor(patches)
+        return self.mlp(extracted)
+
 
 def instantiate_detector(backbone: nn.Module, extractor: nn.Module) -> LightningModule:
     return DetectorMLP(backbone, extractor)
+
+def instantiate_detector_flava(backbone: nn.Module, extractor: nn.Module) -> LightningModule:
+    return DetectorMLPFlava(backbone, extractor)

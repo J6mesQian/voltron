@@ -76,6 +76,7 @@ class GraspAffordanceHarness:
 
             overwatch.info("Instantiating Adapter Model and Callbacks")
             segmenter = self.segmenter_init_fn(self.backbone, self.extractor_init_fn())
+
             checkpoint_callback = ModelCheckpoint(
                 dirpath=str(self.run_dir / self.model_id),
                 filename=f"fold={fold}+" + "{epoch:02d}-{val_loss:0.4f}-{top1:0.4f}-{p99:0.4f}.pt",

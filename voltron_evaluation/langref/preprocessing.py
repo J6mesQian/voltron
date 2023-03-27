@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision.io import read_image
 from torchvision.ops import box_convert
 from tqdm import tqdm
+from transformers import FlavaProcessor, FlavaForPreTraining, FlavaConfig
 
 # Grab Logger
 overwatch = logging.getLogger(__file__)
@@ -115,7 +116,21 @@ class ReferRGBDataset(Dataset):
         """Read image from RGB Path, apply padding, downsampling, & image transforms, then yield batch element."""
         rgb_raw = read_image(self.rgb_paths[idx])
         rgb_pad = F.pad(rgb_raw, [self.dx, self.dy], fill=0, padding_mode="constant")
-        rgb_final = self.preprocess(F.resize(rgb_pad, size=[r for r in self.input_resolution]))
+        rgb_resized = F.resize(rgb_pad, size=[r for r in self.input_resolution])
+
+        if type(self.preprocess) == FlavaProcessor:              
+            # this is going to be a dictionary format   
+            rgb_final = self.preprocess(
+                rgb_resized, 
+                text=[self.language[idx]], 
+                padding="max_length", 
+                return_tensors="pt", 
+                truncation=True,
+                return_codebook_pixels=True,
+                return_image_mask=True
+            )
+        else:
+            rgb_final = self.preprocess(rgb_resized)
 
         return rgb_final, self.language[idx], self.bboxes[idx], self.clutter_splits[idx]
 
